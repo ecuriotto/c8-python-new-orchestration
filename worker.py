@@ -2,7 +2,9 @@ import asyncio
 import logging
 
 from camunda_orchestration_sdk import CamundaAsyncClient, WorkerConfig
-from camunda_orchestration_sdk.runtime.job_worker import JobContext
+from camunda_orchestration_sdk.runtime.job_worker import ConnectedJobContext, JobContext
+from camunda_orchestration_sdk.models import MessagePublicationRequest
+from camunda_orchestration_sdk.models.decision_evaluation_by_id_variables import DecisionEvaluationByIdVariables
 
 from services.credit_service import deduct_credit, get_customer_credit
 from services.credit_card_service import charge_credit_card
@@ -37,6 +39,31 @@ async def handle_charge_credit_card(job: JobContext) -> None:
     job.log.info(f"Credit card {card_number} charged for {open_amount}")
 
 
+async def handle_payment_invocation(job: ConnectedJobContext) -> None:
+    job.log.info(f"Handling job type: {job.type_}")
+    variables = job.variables.to_dict()
+    order_id = variables["orderId"]
+    await job.client.publish_message(
+        data=MessagePublicationRequest(
+            name="paymentRequestMessage",
+            correlation_key=order_id,
+            variables=DecisionEvaluationByIdVariables.from_dict(variables),
+        )
+    )
+
+
+async def handle_payment_completion(job: ConnectedJobContext) -> None:
+    job.log.info(f"Handling job type: {job.type_}")
+    variables = job.variables.to_dict()
+    order_id = variables["orderId"]
+    await job.client.publish_message(
+        data=MessagePublicationRequest(
+            name="paymentCompletedMessage",
+            correlation_key=order_id,
+        )
+    )
+
+
 async def main():
     async with CamundaAsyncClient(logger=logger) as client:
         client.create_job_worker(
@@ -53,6 +80,22 @@ async def main():
                 job_timeout_milliseconds=30_000,
             ),
             callback=handle_charge_credit_card,
+        )
+
+        client.create_job_worker(
+            config=WorkerConfig(
+                job_type="payment-invocation",
+                job_timeout_milliseconds=30_000,
+            ),
+            callback=handle_payment_invocation,
+        )
+
+        client.create_job_worker(
+            config=WorkerConfig(
+                job_type="payment-completion",
+                job_timeout_milliseconds=30_000,
+            ),
+            callback=handle_payment_completion,
         )
 
         logger.info("Workers started. Waiting for jobs...")
