@@ -8,6 +8,7 @@ from services.credit_service import deduct_credit, get_customer_credit
 from services.credit_card_service import charge_credit_card
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -37,7 +38,7 @@ async def handle_charge_credit_card(job: JobContext) -> None:
 
 
 async def main():
-    async with CamundaAsyncClient() as client:
+    async with CamundaAsyncClient(logger=logger) as client:
         client.create_job_worker(
             config=WorkerConfig(
                 job_type="credit-deduction",
