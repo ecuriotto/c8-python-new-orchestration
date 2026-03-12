@@ -3,7 +3,7 @@ import logging
 
 from camunda_orchestration_sdk import CamundaAsyncClient, WorkerConfig
 from camunda_orchestration_sdk.runtime.job_worker import ConnectedJobContext, JobContext
-from camunda_orchestration_sdk.models import MessagePublicationRequest
+from camunda_orchestration_sdk.models import JobFailRequest, MessagePublicationRequest
 from camunda_orchestration_sdk.models.decision_evaluation_by_id_variables import DecisionEvaluationByIdVariables
 
 from services.credit_service import deduct_credit, get_customer_credit
@@ -28,15 +28,27 @@ async def handle_credit_deduction(job: JobContext) -> dict:
     return {"openAmount": open_amount}
 
 
-async def handle_charge_credit_card(job: JobContext) -> None:
+async def handle_charge_credit_card(job: ConnectedJobContext) -> None:
     variables = job.variables.to_dict()
     card_number = variables["cardNumber"]
     cvc = variables["cvc"]
     expiry_date = variables["expiryDate"]
     open_amount = variables["openAmount"]
 
-    charge_credit_card(card_number, cvc, expiry_date, open_amount)
-    job.log.info(f"Credit card {card_number} charged for {open_amount}")
+    try:
+        charge_credit_card(card_number, cvc, expiry_date, open_amount)
+        job.log.info(f"Credit card {card_number} charged for {open_amount}")
+    except ValueError as e:
+        # Fail the job with 0 retries to create an incident in Operate.
+        # Retries = 0 because a bad expiry date won't be fixed by retrying.
+        # Use a fresh client to avoid the asyncio event loop binding issue
+        # (same root cause as the message publishing handlers).
+        job.log.error(f"Credit card charge failed: {e}")
+        async with CamundaAsyncClient(logger=logger) as fail_client:
+            await fail_client.fail_job(
+                job.job_key,
+                data=JobFailRequest(retries=0, error_message=str(e)),
+            )
 
 
 async def handle_payment_invocation(job: ConnectedJobContext) -> None:
