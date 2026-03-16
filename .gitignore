@@ -9,8 +9,5 @@ CamundaCloudMgmtAPI-Client-new-python.txt
 # macOS metadata
 .DS_Store
 
-# BPMN process files
-bpmn/
-
 # Copilot instructions
 instructions.md
