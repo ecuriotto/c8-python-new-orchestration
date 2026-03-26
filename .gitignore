@@ -1,10 +1,7 @@
 venv/
+.env
 __pycache__/
 *.pyc
-
-# Connection parameters (sensitive)
-CamundaCloudMgmtAPI-Client-newpython.txt
-CamundaCloudMgmtAPI-Client-new-python.txt
 
 # macOS metadata
 .DS_Store
