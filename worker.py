@@ -1,6 +1,9 @@
 import asyncio
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from camunda_orchestration_sdk import CamundaAsyncClient, WorkerConfig
 from camunda_orchestration_sdk.runtime.job_worker import JobContext
 
