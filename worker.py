@@ -1,10 +1,13 @@
 import asyncio
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from camunda_orchestration_sdk import CamundaAsyncClient, WorkerConfig
 from camunda_orchestration_sdk.runtime.job_worker import ConnectedJobContext, JobContext
 from camunda_orchestration_sdk.models import MessagePublicationRequest
-from camunda_orchestration_sdk.models.decision_evaluation_by_id_variables import DecisionEvaluationByIdVariables
+from camunda_orchestration_sdk.models.message_publication_request_variables import MessagePublicationRequestVariables
 
 from services.credit_service import deduct_credit, get_customer_credit
 from services.credit_card_service import charge_credit_card
@@ -43,33 +46,25 @@ async def handle_payment_invocation(job: ConnectedJobContext) -> None:
     job.log.info(f"Handling job type: {job.type_}")
     variables = job.variables.to_dict()
     order_id = variables["orderId"]
-    # The outer CamundaAsyncClient (used for job polling) initialises its internal
-    # asyncio locks in the event loop that was running when it was created.
-    # Job handlers are dispatched in a different coroutine context, so reusing
-    # job.client for an async call raises "bound to a different event loop".
-    # Creating a fresh client here ensures its locks are tied to the current loop.
-    async with CamundaAsyncClient(logger=logger) as msg_client:
-        await msg_client.publish_message(
-            data=MessagePublicationRequest(
-                name="paymentRequestMessage",
-                correlation_key=order_id,
-                variables=DecisionEvaluationByIdVariables.from_dict(variables),
-            )
+    await job.client.publish_message(
+        data=MessagePublicationRequest(
+            name="paymentRequestMessage",
+            correlation_key=order_id,
+            variables=MessagePublicationRequestVariables.from_dict(variables),
         )
+    )
 
 
 async def handle_payment_completion(job: ConnectedJobContext) -> None:
     job.log.info(f"Handling job type: {job.type_}")
     variables = job.variables.to_dict()
     order_id = variables["orderId"]
-    # Same event loop issue as in handle_payment_invocation: use a fresh client.
-    async with CamundaAsyncClient(logger=logger) as msg_client:
-        await msg_client.publish_message(
-            data=MessagePublicationRequest(
-                name="paymentCompletedMessage",
-                correlation_key=order_id,
-            )
+    await job.client.publish_message(
+        data=MessagePublicationRequest(
+            name="paymentCompletedMessage",
+            correlation_key=order_id,
         )
+    )
 
 
 async def main():
